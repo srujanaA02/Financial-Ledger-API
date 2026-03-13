@@ -1,0 +1,129 @@
+{
+  "info": {
+    "name": "Financial Ledger API",
+    "description": "Double-Entry Bookkeeping System",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {"key": "base_url", "value": "http://localhost:8000/api/v1"},
+    {"key": "account_a_id", "value": ""},
+    {"key": "account_b_id", "value": ""}
+  ],
+  "item": [
+    {
+      "name": "Health Check",
+      "request": {
+        "method": "GET",
+        "url": "http://localhost:8000/health"
+      }
+    },
+    {
+      "name": "Accounts",
+      "item": [
+        {
+          "name": "Create Account A",
+          "event": [{"listen": "test", "script": {"exec": [
+            "var res = pm.response.json();",
+            "pm.collectionVariables.set('account_a_id', res.id);",
+            "pm.test('Status 201', () => pm.response.to.have.status(201));",
+            "pm.test('Has ID', () => pm.expect(res.id).to.exist);"
+          ]}}],
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/accounts",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\"user_id\": \"user1\", \"account_type\": \"checking\", \"currency\": \"USD\"}"}
+          }
+        },
+        {
+          "name": "Create Account B",
+          "event": [{"listen": "test", "script": {"exec": [
+            "var res = pm.response.json();",
+            "pm.collectionVariables.set('account_b_id', res.id);",
+            "pm.test('Status 201', () => pm.response.to.have.status(201));"
+          ]}}],
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/accounts",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\"user_id\": \"user2\", \"account_type\": \"savings\", \"currency\": \"USD\"}"}
+          }
+        },
+        {
+          "name": "Get Account A",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/accounts/{{account_a_id}}"
+          }
+        },
+        {
+          "name": "Get Account Ledger (Paginated)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/accounts/{{account_a_id}}/ledger?page=1&page_size=10",
+              "query": [
+                {"key": "page", "value": "1"},
+                {"key": "page_size", "value": "10"},
+                {"key": "entry_type", "value": "credit", "disabled": true}
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Transactions",
+      "item": [
+        {
+          "name": "Deposit $1000 to Account A",
+          "event": [{"listen": "test", "script": {"exec": [
+            "pm.test('Status 201', () => pm.response.to.have.status(201));",
+            "pm.test('Completed', () => pm.expect(pm.response.json().status).to.equal('completed'));"
+          ]}}],
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/deposits",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\"account_id\": \"{{account_a_id}}\", \"amount\": 1000, \"description\": \"Initial deposit\"}"}
+          }
+        },
+        {
+          "name": "Transfer $300 A to B",
+          "event": [{"listen": "test", "script": {"exec": [
+            "pm.test('Status 201', () => pm.response.to.have.status(201));",
+            "pm.test('Completed', () => pm.expect(pm.response.json().status).to.equal('completed'));"
+          ]}}],
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/transfers",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\"source_account_id\": \"{{account_a_id}}\", \"destination_account_id\": \"{{account_b_id}}\", \"amount\": 300, \"description\": \"Transfer to B\"}"}
+          }
+        },
+        {
+          "name": "Withdraw $100 from Account A",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/withdrawals",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\"account_id\": \"{{account_a_id}}\", \"amount\": 100, \"description\": \"ATM withdrawal\"}"}
+          }
+        },
+        {
+          "name": "Transfer - Insufficient Funds (should fail 422)",
+          "event": [{"listen": "test", "script": {"exec": [
+            "pm.test('Status 422', () => pm.response.to.have.status(422));",
+            "pm.test('Insufficient funds message', () => pm.expect(pm.response.json().detail).to.equal('Insufficient funds'));"
+          ]}}],
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/transfers",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\"source_account_id\": \"{{account_a_id}}\", \"destination_account_id\": \"{{account_b_id}}\", \"amount\": 99999}"}
+          }
+        }
+      ]
+    }
+  ]
+}
