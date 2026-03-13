@@ -44,7 +44,7 @@ A production-grade **double-entry bookkeeping** REST API built with **FastAPI** 
 
 ### Step 1: Clone the repository
 ```bash
-git clone https://github.com/YOUR_USERNAME/financial-ledger-api.git
+git clone https://github.com/srujanaA02/financial-ledger-api.git
 cd financial-ledger-api
 ```
 
