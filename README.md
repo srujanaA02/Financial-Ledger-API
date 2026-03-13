@@ -37,62 +37,109 @@ A production-grade **double-entry bookkeeping** REST API built with **FastAPI** 
 
 ### Prerequisites
 - Python 3.12+
-- PostgreSQL 16+
+- PostgreSQL 18
 - Git
 
-### 1. Clone the repository
+---
+
+### Step 1: Clone the repository
 ```bash
 git clone https://github.com/YOUR_USERNAME/financial-ledger-api.git
 cd financial-ledger-api
 ```
 
-### 2. Create virtual environment
+---
+
+### Step 2: Create virtual environment
 ```bash
 python -m venv venv
-source venv/Scripts/activate  # Windows (Git Bash)
-source venv/bin/activate       # macOS/Linux
+
+# Activate on Windows (Git Bash)
+source venv/Scripts/activate
+
+# Activate on macOS/Linux
+source venv/bin/activate
 ```
 
-### 3. Install dependencies
+---
+
+### Step 3: Install dependencies
 ```bash
 pip install -r requirements.txt
 ```
 
-### 4. Configure environment
+---
+
+### Step 4: Setup PostgreSQL Database
+
+Open PostgreSQL shell:
 ```bash
-cp .env.example .env
-# Edit .env with your database credentials
+psql -U postgres -p 5432
 ```
 
-### 5. Setup PostgreSQL
+Run these commands inside psql:
 ```sql
+-- Set postgres password
+ALTER USER postgres WITH PASSWORD 'postgres';
+
+-- Create the database
 CREATE DATABASE financial_ledger;
+
+-- Create a dedicated user
 CREATE USER ledger_user WITH PASSWORD 'ledger_pass';
+
+-- Grant basic privileges
 GRANT ALL PRIVILEGES ON DATABASE financial_ledger TO ledger_user;
+
+-- Set database owner
 ALTER DATABASE financial_ledger OWNER TO ledger_user;
+
+-- Connect to the new database
 \c financial_ledger
+
+-- Grant schema privileges
 GRANT ALL ON SCHEMA public TO ledger_user;
 ALTER SCHEMA public OWNER TO ledger_user;
+
+-- Verify the database was created
+\l
+
+-- Exit psql
+\q
 ```
 
-### 6. Run the server
+Verify the connection works:
+```bash
+psql -U ledger_user -d financial_ledger -p 5432
+# Enter password: ledger_pass
+# You should see: financial_ledger=>
+\q
+```
+
+---
+
+### Step 5: Configure environment
+```bash
+cp .env.example .env
+```
+
+Your `.env` file should contain:
+```
+DATABASE_URL=postgresql://ledger_user:ledger_pass@localhost:5432/financial_ledger
+```
+
+---
+
+### Step 6: Run the server
 ```bash
 uvicorn app.main:app --reload
 ```
 
-Visit: **http://127.0.0.1:8000/docs**
-
----
-
-## 🐳 Docker Setup
-
-```bash
-docker-compose up --build
+You should see:
 ```
-
-This will spin up:
-- **PostgreSQL** on port `5433`
-- **FastAPI** on port `8000`
+INFO:     Uvicorn running on http://127.0.0.1:8000
+INFO:     Application startup complete.
+```
 
 ---
 
@@ -111,42 +158,345 @@ This will spin up:
 
 ---
 
-## 📖 Usage Examples
+## 🖥️ Testing via Swagger UI
 
-### Create an Account
+1. Start the server: `uvicorn app.main:app --reload`
+2. Open browser: **http://127.0.0.1:8000/docs**
+3. Follow these steps **in order**:
+
+---
+
+### 1️⃣ Create Account A
+- Click **POST /api/v1/accounts** → Click **Try it out** → Paste body → Click **Execute**
+```json
+{
+  "user_id": "user1",
+  "account_type": "checking",
+  "currency": "USD"
+}
+```
+📋 Copy the `id` from the response — this is your **ACCOUNT_A_ID**
+
+---
+
+### 2️⃣ Create Account B
+- Click **POST /api/v1/accounts** → Click **Try it out** → Paste body → Click **Execute**
+```json
+{
+  "user_id": "user2",
+  "account_type": "savings",
+  "currency": "USD"
+}
+```
+📋 Copy the `id` from the response — this is your **ACCOUNT_B_ID**
+
+---
+
+### 3️⃣ Deposit $1000 into Account A
+- Click **POST /api/v1/deposits** → Click **Try it out** → Paste body → Click **Execute**
+```json
+{
+  "account_id": "ACCOUNT_A_ID",
+  "amount": 1000,
+  "currency": "USD",
+  "description": "Initial deposit"
+}
+```
+✅ Response should show `"status": "completed"`
+
+---
+
+### 4️⃣ Check Account A Balance
+- Click **GET /api/v1/accounts/{accountId}** → Click **Try it out**
+- Enter your **ACCOUNT_A_ID** → Click **Execute**
+
+✅ Response should show `"balance": "1000.0000"`
+
+---
+
+### 5️⃣ Transfer $300 from A to B
+- Click **POST /api/v1/transfers** → Click **Try it out** → Paste body → Click **Execute**
+```json
+{
+  "source_account_id": "ACCOUNT_A_ID",
+  "destination_account_id": "ACCOUNT_B_ID",
+  "amount": 300,
+  "currency": "USD",
+  "description": "Transfer to user2"
+}
+```
+✅ Account A balance should now be **$700**
+
+---
+
+### 6️⃣ Withdraw $100 from Account A
+- Click **POST /api/v1/withdrawals** → Click **Try it out** → Paste body → Click **Execute**
+```json
+{
+  "account_id": "ACCOUNT_A_ID",
+  "amount": 100,
+  "currency": "USD",
+  "description": "ATM withdrawal"
+}
+```
+✅ Account A balance should now be **$600**
+
+---
+
+### 7️⃣ View Ledger for Account A
+- Click **GET /api/v1/accounts/{accountId}/ledger** → Click **Try it out**
+- Enter your **ACCOUNT_A_ID**
+- Set `page = 1`, `page_size = 10`
+- Optionally set `entry_type = debit` to filter only debits
+- Click **Execute**
+
+✅ You should see all ledger entries with timestamps
+
+---
+
+### 8️⃣ Test Insufficient Funds (should FAIL with 422)
+- Click **POST /api/v1/transfers** → Click **Try it out** → Paste body → Click **Execute**
+```json
+{
+  "source_account_id": "ACCOUNT_A_ID",
+  "destination_account_id": "ACCOUNT_B_ID",
+  "amount": 99999,
+  "currency": "USD",
+  "description": "This should fail"
+}
+```
+✅ Response: **HTTP 422**
+```json
+{
+  "detail": "Insufficient funds"
+}
+```
+
+---
+
+### 9️⃣ Check Health
+- Click **GET /health** → Click **Try it out** → Click **Execute**
+```json
+{
+  "status": "healthy",
+  "uptime_seconds": 120.5,
+  "version": "1.0.0",
+  "database": "connected"
+}
+```
+
+---
+
+## 💻 Testing via curl (Git Bash)
+
+> Replace `ACCOUNT_A_ID` and `ACCOUNT_B_ID` with the actual UUIDs from your responses.
+
+---
+
+### Health Check
+```bash
+curl http://localhost:8000/health
+```
+
+---
+
+### Create Account A
 ```bash
 curl -X POST http://localhost:8000/api/v1/accounts \
   -H "Content-Type: application/json" \
   -d '{"user_id": "user1", "account_type": "checking", "currency": "USD"}'
 ```
 
-### Deposit Funds
-```bash
-curl -X POST http://localhost:8000/api/v1/deposits \
-  -H "Content-Type: application/json" \
-  -d '{"account_id": "<ACCOUNT_ID>", "amount": 1000, "description": "Initial deposit"}'
-```
+---
 
-### Transfer Between Accounts
+### Create Account B
 ```bash
-curl -X POST http://localhost:8000/api/v1/transfers \
+curl -X POST http://localhost:8000/api/v1/accounts \
   -H "Content-Type: application/json" \
-  -d '{
-    "source_account_id": "<ACCOUNT_A_ID>",
-    "destination_account_id": "<ACCOUNT_B_ID>",
-    "amount": 300,
-    "description": "Payment"
-  }'
-```
-
-### Get Paginated Ledger (filtered by entry type)
-```bash
-curl "http://localhost:8000/api/v1/accounts/<ACCOUNT_ID>/ledger?page=1&page_size=10&entry_type=credit"
+  -d '{"user_id": "user2", "account_type": "savings", "currency": "USD"}'
 ```
 
 ---
 
-## 📊 Double-Entry Bookkeeping
+### Get Account Details (with live balance)
+```bash
+curl http://localhost:8000/api/v1/accounts/ACCOUNT_A_ID
+```
+
+---
+
+### Deposit $1000 into Account A
+```bash
+curl -X POST http://localhost:8000/api/v1/deposits \
+  -H "Content-Type: application/json" \
+  -d '{
+    "account_id": "ACCOUNT_A_ID",
+    "amount": 1000,
+    "currency": "USD",
+    "description": "Initial deposit"
+  }'
+```
+
+---
+
+### Transfer $300 from Account A to Account B
+```bash
+curl -X POST http://localhost:8000/api/v1/transfers \
+  -H "Content-Type: application/json" \
+  -d '{
+    "source_account_id": "ACCOUNT_A_ID",
+    "destination_account_id": "ACCOUNT_B_ID",
+    "amount": 300,
+    "currency": "USD",
+    "description": "Transfer to user2"
+  }'
+```
+
+---
+
+### Withdraw $100 from Account A
+```bash
+curl -X POST http://localhost:8000/api/v1/withdrawals \
+  -H "Content-Type: application/json" \
+  -d '{
+    "account_id": "ACCOUNT_A_ID",
+    "amount": 100,
+    "currency": "USD",
+    "description": "ATM withdrawal"
+  }'
+```
+
+---
+
+### Get Ledger — All Entries (paginated)
+```bash
+curl "http://localhost:8000/api/v1/accounts/ACCOUNT_A_ID/ledger?page=1&page_size=10"
+```
+
+### Get Ledger — Filter by Debit Only
+```bash
+curl "http://localhost:8000/api/v1/accounts/ACCOUNT_A_ID/ledger?page=1&page_size=10&entry_type=debit"
+```
+
+### Get Ledger — Filter by Credit Only
+```bash
+curl "http://localhost:8000/api/v1/accounts/ACCOUNT_A_ID/ledger?page=1&page_size=10&entry_type=credit"
+```
+
+---
+
+### Test Insufficient Funds (should return 422)
+```bash
+curl -X POST http://localhost:8000/api/v1/transfers \
+  -H "Content-Type: application/json" \
+  -d '{
+    "source_account_id": "ACCOUNT_A_ID",
+    "destination_account_id": "ACCOUNT_B_ID",
+    "amount": 99999
+  }'
+```
+Expected:
+```json
+{"detail": "Insufficient funds"}
+```
+
+---
+
+### Test Negative Amount (should return 400)
+```bash
+curl -X POST http://localhost:8000/api/v1/deposits \
+  -H "Content-Type: application/json" \
+  -d '{"account_id": "ACCOUNT_A_ID", "amount": -100}'
+```
+Expected:
+```json
+{"detail": "Amount must be positive"}
+```
+
+---
+
+## 🐳 Docker Setup
+
+Make sure **Docker Desktop** is running, then:
+
+```bash
+# Build and start all services
+docker-compose up --build
+
+# Run in background (detached mode)
+docker-compose up --build -d
+
+# View logs
+docker-compose logs -f
+
+# Stop all services
+docker-compose down
+
+# Stop and remove volumes (clears database)
+docker-compose down -v
+```
+
+Services started:
+- **PostgreSQL** → `localhost:5433`
+- **FastAPI** → `localhost:8000`
+
+Visit: **http://localhost:8000/docs**
+
+---
+
+## 🧪 Running Tests
+
+```bash
+# Run all tests with verbose output
+pytest tests/ -v
+
+# Run only account tests
+pytest tests/test_accounts.py -v
+
+# Run only transaction tests
+pytest tests/test_transactions.py -v
+
+# Run a specific single test
+pytest tests/test_transactions.py::test_transfer_insufficient_funds -v
+
+# Run with short summary
+pytest tests/ -v --tb=short
+```
+
+Expected output:
+```
+tests/test_accounts.py::test_create_account PASSED
+tests/test_accounts.py::test_get_account PASSED
+tests/test_accounts.py::test_get_account_not_found PASSED
+tests/test_accounts.py::test_get_ledger_empty PASSED
+tests/test_accounts.py::test_get_ledger_pagination PASSED
+tests/test_accounts.py::test_get_ledger_filter_by_entry_type PASSED
+tests/test_transactions.py::test_deposit PASSED
+tests/test_transactions.py::test_deposit_updates_balance PASSED
+tests/test_transactions.py::test_deposit_negative_amount PASSED
+tests/test_transactions.py::test_transfer_success PASSED
+tests/test_transactions.py::test_transfer_updates_both_balances PASSED
+tests/test_transactions.py::test_transfer_insufficient_funds PASSED
+tests/test_transactions.py::test_transfer_source_not_found PASSED
+tests/test_transactions.py::test_withdrawal_success PASSED
+tests/test_transactions.py::test_double_entry_creates_two_ledger_entries PASSED
+
+================ 15 passed in 1.5s ================
+```
+
+---
+
+## 📮 Postman Collection
+
+1. Open **Postman**
+2. Click **Import**
+3. Select `postman_collection.json` from the project root
+4. Run requests **in order** from top to bottom
+5. Account IDs are **automatically saved** as variables between requests
+
+---
+
+## 📊 Double-Entry Bookkeeping Explained
 
 Every financial operation creates **two balanced ledger entries**.
 
@@ -162,23 +512,23 @@ DEBIT   account_A  -$300   (money out)
 CREDIT  account_B  +$300   (money in)
 ```
 
-> The sum of all entries for a transaction always equals **zero** — this is the core principle of double-entry bookkeeping.
+> The sum of all entries for a transaction always equals **zero** — the core principle of double-entry bookkeeping.
 
 ---
 
 ## 🗄️ Database Schema
 
 ```
-┌─────────────────────┐     ┌──────────────────────┐     ┌─────────────────────────┐
-│      accounts       │     │     transactions      │     │      ledger_entries     │
-├─────────────────────┤     ├──────────────────────┤     ├─────────────────────────┤
-│ id (UUID) PK        │◄────│ source_account_id FK │     │ id (UUID) PK            │
-│ user_id             │◄────│ dest_account_id FK   │◄────│ account_id FK           │
-│ account_type        │     │ id (UUID) PK         │◄────│ transaction_id FK       │
-│ currency            │     │ transaction_type     │     │ entry_type (debit/credit)│
-│ status              │     │ amount               │     │ amount                  │
-│ created_at          │     │ currency             │     │ timestamp               │
-└─────────────────────┘     │ status               │     └─────────────────────────┘
+┌─────────────────────┐     ┌──────────────────────┐     ┌──────────────────────────┐
+│      accounts       │     │     transactions      │     │      ledger_entries      │
+├─────────────────────┤     ├──────────────────────┤     ├──────────────────────────┤
+│ id (UUID) PK        │◄────│ source_account_id FK │     │ id (UUID) PK             │
+│ user_id             │◄────│ dest_account_id FK   │◄────│ account_id FK            │
+│ account_type        │     │ id (UUID) PK         │◄────│ transaction_id FK        │
+│ currency            │     │ transaction_type     │     │ entry_type (debit/credit) │
+│ status              │     │ amount               │     │ amount                   │
+│ created_at          │     │ currency             │     │ timestamp                │
+└─────────────────────┘     │ status               │     └──────────────────────────┘
                             │ description          │
                             │ created_at           │
                             └──────────────────────┘
@@ -186,43 +536,15 @@ CREDIT  account_B  +$300   (money in)
 
 ---
 
-## 🧪 Running Tests
-
-```bash
-pytest tests/ -v
-```
-
-### Test Coverage
-
-| Test | Description |
-|---|---|
-| `test_create_account` | Account creation returns 201 with correct fields |
-| `test_get_account` | Account retrieval returns correct data |
-| `test_get_account_not_found` | Returns 404 for unknown account |
-| `test_get_ledger_empty` | New account has empty ledger |
-| `test_get_ledger_pagination` | Pagination works correctly |
-| `test_get_ledger_filter_by_entry_type` | Filter by debit/credit works |
-| `test_deposit` | Deposit creates completed transaction |
-| `test_deposit_updates_balance` | Balance increases after deposit |
-| `test_deposit_negative_amount` | Rejects negative amounts with 400 |
-| `test_transfer_success` | Transfer completes successfully |
-| `test_transfer_updates_both_balances` | Both accounts updated correctly |
-| `test_transfer_insufficient_funds` | Rejects with 422 when funds insufficient |
-| `test_transfer_source_not_found` | Returns 404 for unknown account |
-| `test_withdrawal_success` | Withdrawal completes successfully |
-| `test_double_entry_creates_two_ledger_entries` | Verifies debit+credit pair created |
-
----
-
 ## 🔒 Business Rules
 
-| Rule | Behavior |
-|---|---|
-| Negative balance | Transaction rejected with `422 Unprocessable Entity` |
-| Frozen account | Transaction rejected with `422 Unprocessable Entity` |
-| Negative amount | Rejected with `400 Bad Request` |
-| Account not found | Rejected with `404 Not Found` |
-| Ledger modification | Blocked at application level — raises exception |
+| Rule | HTTP Status | Message |
+|---|---|---|
+| Insufficient funds | 422 | `Insufficient funds` |
+| Frozen account | 422 | `Account is frozen` |
+| Negative amount | 400 | `Amount must be positive` |
+| Account not found | 404 | `Account not found` |
+| Ledger modification | 500 | `Ledger entries are immutable` |
 
 ---
 
@@ -233,28 +555,37 @@ financial-ledger-api/
 ├── app/
 │   ├── api/
 │   │   └── routes/
-│   │       ├── accounts.py        # Account endpoints
-│   │       └── transactions.py    # Transaction endpoints
+│   │       ├── __init__.py
+│   │       ├── accounts.py         # Account endpoints
+│   │       └── transactions.py     # Transaction endpoints
 │   ├── core/
-│   │   └── config.py              # Environment configuration
+│   │   ├── __init__.py
+│   │   └── config.py               # Environment configuration
 │   ├── db/
-│   │   └── database.py            # Database connection & session
+│   │   ├── __init__.py
+│   │   └── database.py             # Database connection & session
 │   ├── models/
-│   │   └── models.py              # SQLAlchemy ORM models
+│   │   ├── __init__.py
+│   │   └── models.py               # SQLAlchemy ORM models
 │   ├── schemas/
-│   │   └── schemas.py             # Pydantic request/response schemas
+│   │   ├── __init__.py
+│   │   └── schemas.py              # Pydantic request/response schemas
 │   ├── services/
-│   │   ├── account_service.py     # Account business logic
-│   │   └── transaction_service.py # Transaction business logic
-│   └── main.py                    # FastAPI app entry point
+│   │   ├── __init__.py
+│   │   ├── account_service.py      # Account business logic
+│   │   └── transaction_service.py  # Transaction business logic
+│   └── main.py                     # FastAPI app entry point
 ├── tests/
-│   ├── conftest.py                # Test fixtures
-│   ├── test_accounts.py           # Account tests
-│   └── test_transactions.py       # Transaction tests
+│   ├── __init__.py
+│   ├── conftest.py                 # Test fixtures & database setup
+│   ├── test_accounts.py            # Account endpoint tests
+│   └── test_transactions.py        # Transaction endpoint tests
 ├── Dockerfile
 ├── docker-compose.yml
 ├── .dockerignore
+├── .env
 ├── .env.example
+├── .gitignore
 ├── postman_collection.json
 ├── requirements.txt
 └── README.md
@@ -267,14 +598,5 @@ financial-ledger-api/
 | Variable | Description | Example |
 |---|---|---|
 | `DATABASE_URL` | PostgreSQL connection string | `postgresql://ledger_user:ledger_pass@localhost:5432/financial_ledger` |
-
----
-
-## 📮 Postman Collection
-
-Import `postman_collection.json` into Postman for a ready-to-use collection with:
-- Automated test scripts
-- Variable capture (account IDs auto-saved between requests)
-- All endpoints pre-configured
 
 ---
